@@ -10,6 +10,7 @@ import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
@@ -39,6 +40,7 @@ import android.support.annotation.NonNull;
 import android.support.design.widget.FloatingActionButton;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Base64;
 import android.util.Log;
 import android.util.Size;
 import android.util.SparseIntArray;
@@ -53,9 +55,12 @@ import android.widget.Toast;
 import com.android.volley.NetworkResponse;
 import com.android.volley.NoConnectionError;
 import com.android.volley.Request;
+import com.android.volley.RequestQueue;
 import com.android.volley.Response;
 import com.android.volley.TimeoutError;
 import com.android.volley.VolleyError;
+import com.android.volley.toolbox.StringRequest;
+import com.android.volley.toolbox.Volley;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -76,18 +81,24 @@ import java.util.concurrent.Exchanger;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
+import static com.example.zainfo.liveness.Utils.bitmapToByteArray;
 import static com.example.zainfo.liveness.Utils.imageToByteArray;
 
 public class MainActivity extends AppCompatActivity {
 
 //    private ProgressDialog progressDialog;
-
+    private String encodedImage;
+    private ProgressDialog progressDialog;
+    private String userId;
     private int pointX;
     private int pointY;
-
+    private Boolean signupState;
+    private RequestController mReqController;
+    private SharedPreferences sp;
+    private RequestQueue mQueue;
+    private Bitmap testBit;
     public static final String CAMERA_FRONT = "1";
     public static final String CAMERA_BACK = "0";
-
 //    final RequestController mReqController = RequestController.getInstance(this);
 
     @Override
@@ -96,6 +107,19 @@ public class MainActivity extends AppCompatActivity {
 //        requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         setContentView(R.layout.activity_main);
+        mQueue= Volley.newRequestQueue(MainActivity.this);
+        mReqController= RequestController.getInstance(this);
+        sp=getSharedPreferences("UserInfo", Context.MODE_PRIVATE);
+        signupState=sp.getBoolean("signup",false);
+        userId=sp.getString("userId","");
+        boolean testState=sp.getBoolean("isTesting",false);
+        if(testState){
+            setTitle("静默检测");
+        }else if(signupState){
+            setTitle("人脸注册");
+        }else{
+            setTitle("人脸验证");
+        }
         AutoFitTextureView textureView = (AutoFitTextureView) findViewById(R.id.textureView);
         mTextureView = textureView;
         mTextureView.setSurfaceTextureListener(mSurfaceTextureListener);
@@ -654,7 +678,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Opens the camera specified by {@link Camera2BasicFragment#mCameraId}.
+     * Opens the camera specified by.
      */
     private void openCamera(int width, int height) {
         if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA)
@@ -902,18 +926,22 @@ public class MainActivity extends AppCompatActivity {
                     showToast("Saved: " + mFile);
 
                     Bitmap bit = BitmapFactory.decodeFile(mFile.getAbsolutePath());
-
-                    Bundle bundle = new Bundle();
-                    bundle.putString("imgDir",mFile.getAbsolutePath());
-                    bundle.putString("cameraId",mCameraId);
-                    Intent in = new Intent(MainActivity.this,ResultActivity.class);
-                    in.putExtras(bundle);
-                    startActivity(in);
+                    bit=rotateBitmap(bit);
+                    byte[] byteArr=bitmapToByteArray(bit);
+                    testBit=bit;
+                    encodedImage = Base64.encodeToString(byteArr, Base64.DEFAULT);
+                    sendImage();
+                    //Bundle bundle = new Bundle();
+                    //bundle.putString("imgDir",mFile.getAbsolutePath());
+                    //bundle.putString("cameraId",mCameraId);
+                    //Intent in = new Intent(MainActivity.this,ResultActivity.class);
+                    //in.putExtras(bundle);
+                    //startActivity(in);
 //                    progressDialog = ProgressDialog.show(MainActivity.this,"Loading...","Please Wait...",true,false);
 //                    mReqController.addToRequestQueue(getCustomReq(bit));
 
                     Log.d(TAG, mFile.toString());
-//                    unlockFocus();
+                    unlockFocus();
                 }
             };
 
@@ -922,6 +950,54 @@ public class MainActivity extends AppCompatActivity {
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
+    }
+
+    private void sendImage() {
+        progressDialog = ProgressDialog.show(MainActivity.this,"Loading...","Please Wait...",true,false);
+
+        String url=signupState?"http://192.168.26.125:3245/regist":"http://192.168.26.125:3245/validate";
+        final String tittle=signupState?"注册结果：":"验证结果：";
+        boolean testState=sp.getBoolean("isTesting",false);
+        if(testState){
+            url="http://192.168.26.90:3248/StaticLiveness";
+            //mReqController.addToRequestQueue(getCustomReq(testBit));
+            //return;
+        }
+        StringRequest sr=new StringRequest(Request.Method.POST, url, new Response.Listener<String>() {
+            @Override
+            public void onResponse(String response) {
+                try {
+                    progressDialog.dismiss();
+                    JSONObject jo=new JSONObject(response);
+                    String res=jo.getString("result");
+                    String det=jo.getString("detail");
+                    new AlertDialog.Builder(MainActivity.this).setTitle(tittle+res).setMessage(det).setNeutralButton("确定", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialogInterface, int i) {
+                            //startActivity(getIntent());
+                        }
+                    }).show();
+                    //MainActivity.this.finish();
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+        }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                Log.e("LOGIN ERROR",error.getMessage());
+            }
+        }){
+            @Override
+            protected Map<String, String> getParams() {
+                Map<String,String> params=new HashMap<>();
+                params.put("user",userId);
+                params.put("img",encodedImage);
+                return params;
+            }
+        };
+        mQueue.add(sr);
+        return;
     }
 
     /**
@@ -1043,7 +1119,15 @@ public class MainActivity extends AppCompatActivity {
         }
 
     }
-
-
+    protected Bitmap rotateBitmap(Bitmap bit){
+        Matrix rotateMatrix = new Matrix();
+        if(mCameraId.equals(CAMERA_BACK))
+            rotateMatrix.postRotate((float)90.0);
+        else
+            rotateMatrix.postRotate((float)270.0);
+        Bitmap rotaBitmap = Bitmap.createBitmap(bit, 0, 0, bit.getWidth() , bit.getHeight() , rotateMatrix, false);
+        //Bitmap bitmap2 = Utils.bitmapCropper(rotaBitmap);
+        return rotaBitmap;
+    }
 
 }

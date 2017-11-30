@@ -38,7 +38,7 @@ public class CustomRequest extends Request<NetworkResponse> {
     private Response.ErrorListener mErrorListener;
     private Map<String, String> mHeaders;
 
-    public static final int MY_SOCKET_TIMEOUT_MS = 10000;
+    public static final int MY_SOCKET_TIMEOUT_MS = 20000;
 
     public CustomRequest(String url, Map<String, String> headers,
                          Response.Listener<NetworkResponse> listener,
@@ -66,7 +66,8 @@ public class CustomRequest extends Request<NetworkResponse> {
     private DefaultRetryPolicy getMyOwnDefaultRetryPolicy(){
         return new DefaultRetryPolicy(
                 MY_SOCKET_TIMEOUT_MS,
-                DefaultRetryPolicy.DEFAULT_MAX_RETRIES,
+//                DefaultRetryPolicy.DEFAULT_MAX_RETRIES,
+                0,
                 DefaultRetryPolicy.DEFAULT_BACKOFF_MULT);
     }
 

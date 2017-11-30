@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="action_choices">
+        <item>眨眼</item>
+        <item>张嘴</item>
+        <item>点头</item>
+        <item>左转头</item>
+        <item>右转头</item>
+    </string-array>
+</resources>

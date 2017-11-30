@@ -116,7 +116,7 @@ public class ResultActivity extends AppCompatActivity {
 
         String strBit = bitmap2.toString();
 
-        final String url = "http://192.168.26.127:3248/";
+        final String url = "192.168.26.90:3248/";
         final String route = "StaticLiveness";
 
         CustomRequest customReq = new CustomRequest(Request.Method.POST,url+route,
